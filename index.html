@@ -1,0 +1,231 @@
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>CS Office Hours</title>
+        <script>
+            if(!location.hash.replace('#', '').length) {
+                location.href = location.href.split('#')[0] + '#' + (Math.random() * 100).toString().replace('.', '');
+                location.reload();
+            }
+        </script>
+
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <meta charset="utf-8">
+        <link rel="stylesheet" href="https://cdn.webrtc-experiment.com/style.css">
+
+        <style>
+            audio, video {
+                -moz-transition: all 1s ease;
+                -ms-transition: all 1s ease;
+
+                -o-transition: all 1s ease;
+                -webkit-transition: all 1s ease;
+                transition: all 1s ease;
+                vertical-align: top;
+                width: 100%;
+            }
+
+            input {
+                border: 1px solid #d9d9d9;
+                border-radius: 1px;
+                font-size: 2em;
+                margin: .2em;
+                width: 30%;
+            }
+
+            select {
+                border: 1px solid #d9d9d9;
+                border-radius: 1px;
+                height: 50px;
+                margin-left: 1em;
+                margin-right: -12px;
+                padding: 1.1em;
+                vertical-align: 6px;
+                width: 18%;
+            }
+
+            .setup {
+                border-bottom-left-radius: 0;
+                border-top-left-radius: 0;
+                font-size: 102%;
+                height: 47px;
+                margin-left: -9px;
+                margin-top: 8px;
+                position: absolute;
+            }
+
+            p { padding: 1em; }
+
+            li {
+                border-bottom: 1px solid rgb(189, 189, 189);
+                border-left: 1px solid rgb(189, 189, 189);
+                padding: .5em;
+            }
+        </style>
+
+
+        <!-- WEBRTC LIBRARIES -->
+        <script src="https://cdn.webrtc-experiment.com/socket.io.js"> </script> 
+        <script src="https://cdn.webrtc-experiment.com/RTCPeerConnection-v1.5.js"> </script> 
+        <script src="https://cdn.webrtc-experiment.com/webrtc-broadcasting/broadcast.js"> </script> 
+        <script src="https://cdn.webrtc-experiment.com/DetectRTC.js"></script>
+    </head>
+
+    <body>
+        <header style="text-align: center;">
+            <h1>
+                CS Office Hours
+            </h1>
+        </header>
+
+        <section class="experiment">
+            <section>
+                <h3>Enter your name:</h3>
+            <div id="inputContainer">
+                <input type="text" style="width:400px" id="broadcast-name">
+                <button id="setup-new-broadcast" class="setup">Begin office hours</button>
+            </div>
+            <div id="joinerContainer"></div>
+            </section>
+            <!-- ROOM LIST CONTAINER-->
+            <table style="width: 100%;" id="joiners-list"></table>
+
+            <!-- VIDEO CONTAINER -->
+            <div id="videos-container"></div>
+        </section>
+
+        <script>
+            var config = {
+                openSocket: function(config) {
+                    var SIGNALING_SERVER = 'https://webrtcweb.com:9559/';
+                    config.channel = config.channel || location.href.replace(/\/|:|#|%|\.|\[|\]/g, '');
+                    console.log('config.channel:', config.channel);
+                    var sender = Math.round(Math.random() * 999999999) + 999999999;
+                    console.log('sender: ', sender)
+                    io.connect(SIGNALING_SERVER).emit('new-channel', {
+                        channel: config.channel,
+                        sender: sender
+                    });
+                    var socket = io.connect(SIGNALING_SERVER + config.channel);
+                    socket.channel = config.channel;
+                    socket.on('connect', function () {
+                        if (config.callback) config.callback(socket);
+                        console.log('socket connected')
+                    });
+                    socket.send = function (message) {
+                        socket.emit('message', {
+                            sender: sender,
+                            data: message
+                        });
+                    };
+                    socket.on('message', config.onmessage);
+                },
+                onRemoteStream: function(htmlElement) {
+                    htmlElement.setAttribute('controls', true);
+                    videosContainer.insertBefore(htmlElement, videosContainer.firstChild);
+                    htmlElement.play();
+                    rotateInCircle(htmlElement);
+                },
+                onRoomFound: function(room) {
+                    console.log('this is room.broadcaster', room.broadcaster)
+                    var alreadyExist = document.querySelector('button[data-broadcaster="' + room.broadcaster + '"]');
+                    console.log('alreadyExist val: ', alreadyExist)
+                    if (alreadyExist) return;
+                    if (typeof studentList === 'undefined')                      
+                        studentList = document.body;
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td> Welcome! '+ '<strong>' + room.roomName + '</strong> is taking questions.</td>' +
+                        '<td><button class="join">Join</button></td>';
+                        console.log('this is firstChild: ', studentList.firstChild)
+                        studentList.insertBefore(tr, studentList.firstChild);
+                    var joinRoomButton = tr.querySelector('.join');
+                    joinRoomButton.setAttribute('data-broadcaster', room.broadcaster);
+                    joinRoomButton.setAttribute('data-roomToken', room.broadcaster);
+                    joinRoomButton.onclick = function() {
+                        this.disabled = true;
+                        var broadcaster = this.getAttribute('data-broadcaster');
+                        var roomToken = this.getAttribute('data-roomToken');
+                        broadcastUI.joinRoom({
+                            roomToken: roomToken,
+                            joinUser: broadcaster
+                        });
+                        hideUnnecessaryStuff();
+                    };
+                },
+                onNewParticipant: function(numberOfViewers) {
+                    document.title = 'Viewers: ' + numberOfViewers;
+                }
+            };
+            function setupNewBroadcastButtonClickHandler() {
+                var admin = document.getElementById('broadcast-name').value;
+                console.log('this is room: ', admin)
+                if (admin) {            
+                document.getElementById('broadcast-name').disabled = true;
+                document.getElementById('setup-new-broadcast').disabled = true;
+
+                DetectRTC.load(function() {
+                    captureUserMedia(function() {
+                        var shared = 'video';
+                        broadcastUI.createRoom({
+                            roomName: admin,
+                            isAudio: shared === 'audio'
+                        });
+                    });
+                    hideUnnecessaryStuff();
+                });
+            }
+            else {
+                alert ('Please enter your name.')
+                return;
+            }
+        }
+            function captureUserMedia(callback) {
+                var constraints = null;
+                window.option = broadcastingOption ? broadcastingOption.value : '';
+                var htmlElement = document.createElement(option === 'Only Audio' ? 'audio' : 'video');
+                htmlElement.setAttribute('autoplay', true);
+                htmlElement.setAttribute('controls', true);
+                videosContainer.insertBefore(htmlElement, videosContainer.firstChild);
+                var mediaConfig = {
+                    video: htmlElement,
+                    onsuccess: function(stream) {
+                        config.attachStream = stream;
+                        callback && callback();
+
+                        htmlElement.setAttribute('muted', true);
+                        rotateInCircle(htmlElement);
+                    },
+                    onerror: function() {
+                            alert('Access to webcam denied.');
+                    }
+                };
+                if (constraints) mediaConfig.constraints = constraints;
+                getUserMedia(mediaConfig);
+            }
+
+            var broadcastUI = broadcast(config);
+            /* UI specific */
+            var videosContainer = document.getElementById('videos-container') || document.body;
+            var setupNewBroadcast = document.getElementById('setup-new-broadcast');
+            var studentList = document.getElementById('joiners-list');
+            var broadcastingOption = document.getElementById('broadcasting-option');
+            if (setupNewBroadcast) {
+                setupNewBroadcast.onclick = setupNewBroadcastButtonClickHandler;
+            }
+            function hideUnnecessaryStuff() {
+                var visibleElements = document.getElementsByClassName('visible'),
+                    length = visibleElements.length;
+                for (var i = 0; i < length; i++) {
+                    visibleElements[i].style.display = 'none';
+                }
+            }
+            function rotateInCircle(video) {
+                video.style[navigator.mozGetUserMedia ? 'transform' : '-webkit-transform'] = 'rotate(0deg)';
+                setTimeout(function() {
+                    video.style[navigator.mozGetUserMedia ? 'transform' : '-webkit-transform'] = 'rotate(360deg)';
+                }, 1000);
+            }
+        </script>
+    </body>
+</html>
